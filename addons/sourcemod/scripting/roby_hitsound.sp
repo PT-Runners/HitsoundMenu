@@ -74,7 +74,9 @@ public void OnPluginStart() {
 	cv_hitsound_kill_only.AddChangeHook(on_cvar_change);
 	
 	do_cookie_stuff();
-	
+}
+
+public void OnMapStart(){
 	precache_sounds();
 }
 
@@ -127,9 +129,9 @@ public int callback_hitsound_menu(Menu menu, MenuAction action, int param1, int 
 			SetClientCookie(param1, cookie_hitsound, item); // pls work
 
 			if (!option) {
-				PrintToChat(param1, "%s {lightred}Desativaste{default} os HitSounds.", TAG);
+				CPrintToChat(param1, "%s {lightred}Desativaste{default} os HitSounds.", TAG);
 			} else {
-				PrintToChat(param1, "%s Escolheste {green}\"%s\" {default}como HitSound.", TAG, g_sounds_name[option]);
+				CPrintToChat(param1, "%s Escolheste {green}\"%s\" {default}como HitSound.", TAG, g_sounds_name[option]);
 			}				
 		}
 		
