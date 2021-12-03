@@ -2,230 +2,448 @@
 #include <sdktools>
 #include <clientprefs>
 #include <multicolors>
+#include <tVip>
 
 public Plugin myinfo = {
 	name = "Hitsound menu",
-	author = "roby",
+	author = "roby edited by Trayz",
 	description = "Play a sound when hitting a player",
 	version = "",
 	url = "https://steamcommunity.com/groups/EraSurfCommunity"
 };
 
 #define TAG ">"
-#define TOTAL_HITSOUNDS sizeof(g_sounds)
+#define MAX_SOUNDS	50
 #define SPECMODE_NONE 0
 #define SPECMODE_FIRSTPERSON 4
 #define SPECMODE_3RDPERSON 5
 #define SPECMODE_FREELOOK 6
+#define HIT							1
+#define KILL						2
+
+enum struct Sound
+{
+	char name[32];
+	char path[PLATFORM_MAX_PATH];
+	char flag[16];
+}
+
+Sound g_Hitsounds[MAX_SOUNDS];
+int g_HitsoundsSize;
+
+Sound g_Killsounds[MAX_SOUNDS];
+int g_KillsoundsSize;
 
 Handle cookie_hitsound = INVALID_HANDLE;
+Handle cookie_killsound = INVALID_HANDLE;
 
-// roby_hitsound_kill_only
-// 0: sound will always play when hitting
-// 1: sound will only play on kill
-ConVar cv_hitsound_kill_only;
 
-// client array (each client will have X hitmarker, default = 1 = skeet)
-int g_cl_hitsound[MAXPLAYERS + 1] = {1, ...};
+int g_cl_hitsound[MAXPLAYERS + 1] = {0, ...};
+int g_cl_killsound[MAXPLAYERS + 1] = {0, ...};
 
-// add hitsounds here (WARNING: THEY HAVE TO BE IN THE SAME ORDER), which means, 
-// hitsound Skeet refers to erasounds/fdp_era.wav
-// hitsound MySound refers to myfolder/mysound.wav
-// READ: mysounds or erasounds HAVE TO BE IN csgo/sound folder
-char g_sounds[][] = {
-	"",
-	"play */ptrunners/hitsounds/fdp_era.wav",
-    "play */ptrunners/hitsounds/cod_era.mp3",
-    "play */ptrunners/hitsounds/nojohit_era.wav",
-    "play */ptrunners/hitsounds/nojohittwo_era.wav",
-	"play */ptrunners/hitsounds/bubble_era.wav",
-	"play */ptrunners/hitsounds/bounce_era.wav",
-	"play */ptrunners/hitsounds/catgun_fire01_era.wav",
-	"play */ptrunners/hitsounds/firework_1_era.mp3",
-	"play */ptrunners/hitsounds/punch_era.mp3",
-	"play */ptrunners/hitsounds/laser_era.mp3",
-	"play */ptrunners/hitsounds/bonk.wav",
-	"play */ptrunners/hitsounds/bameware_era.wav",
-	//"play */myfolder/mysound.wav"
-};
-char g_sounds_name[][] = {
-	"Nenhum",
-    "Skeet",
-	"Cod",
-	"Nojo1",
-	"Nojo2",
-	"Bubble",
-	"Bounce",
-	"Catgun",
-	"Firework",
-	"Punch",
-	"Laser",
-	"Bonk",
-	"Bameware",
-	//"MySound"
-};
+public void OnPluginStart()
+{		
+	cookie_hitsound = RegClientCookie("roby_cookie_hitsound", "hitsound choice", CookieAccess_Protected);
+	cookie_killsound = RegClientCookie("roby_cookie_killsound", "killsound choice", CookieAccess_Protected);
 
-public void OnPluginStart() {		
-	RegConsoleCmd("sm_hitsound", cmd_hit_sound);
+	RegConsoleCmd("sm_hitsound", Cmd_HitSound);
 	
-	HookEvent("player_hurt", event_player_hurt);
-	
-	cv_hitsound_kill_only = CreateConVar("roby_hitsound_kill_only", "0", "0: sound will always play when you hit/kill someone; 1: sound will only play on kill");
-	cv_hitsound_kill_only.AddChangeHook(on_cvar_change);
-	
-	do_cookie_stuff();
+	HookEvent("player_hurt", OnPlayerHurt);
+	HookEvent("player_death", OnPlayerDeath);
 }
 
-public void OnMapStart(){
-	precache_sounds();
+public void OnMapStart()
+{
+	DownloadPrecacheSounds();
 }
 
-public void on_cvar_change(ConVar cvar, char[] old_value, char[] new_value) {
-	if (cvar == cv_hitsound_kill_only) {
-		LogMessage(TAG ... "%s", StringToInt(new_value) == 0 ? "hitsounds are enabled on kill and hit":"hitsounds will play only on kills");
+public OnClientCookiesCached(int client)
+{
+	char hs[4], ks[4];
+	GetClientCookie(client, cookie_hitsound, hs, sizeof(hs));
+	g_cl_hitsound[client] = (hs[0] == '\0') ? 0 : StringToInt(hs);
+
+	GetClientCookie(client, cookie_killsound, ks, sizeof(ks));
+	g_cl_killsound[client] = (ks[0] == '\0') ? 0 : StringToInt(ks);
+}
+
+public void tVip_OnClientLoadedPost(int client)
+{
+	if(g_cl_hitsound[client] > 0 && !CheckAdminFlag(client, g_Hitsounds[g_cl_hitsound[client]].flag))
+	{
+		g_cl_hitsound[client] = 0;
+	}
+
+	if(g_cl_killsound[client] > 0 && !CheckAdminFlag(client, g_Killsounds[g_cl_killsound[client]].flag))
+	{
+		g_cl_killsound[client] = 0;
 	}
 }
 
+public void OnPluginEnd()
+{
+	for(int client = 1; client <= MaxClients; client++)
+	{
+		if(IsClientInGame(client))
+		{
+			OnClientDisconnect(client);
+		}
+	}
+}
 
-// ** ** ** **
-// commands
-
-public Action cmd_hit_sound(int client, int args) {
-	if (!is_valid_client(client)) {
+public Action OnPlayerHurt(Event event, const char[] name, bool dontBroadcast)
+{
+	int attacker = GetClientOfUserId(GetEventInt(event, "attacker"));
+	if (!IsValidClient(attacker)) {
 		return Plugin_Handled;
 	}
 	
-	initialize_hit_sound_menu(client);
+	if (GetEventInt(event, "health") > 0) {
+		return Plugin_Handled;
+	}
+	
+	PlaySound(attacker, g_Hitsounds[g_cl_hitsound[attacker]].path);
+	PlaySoundForSpecs(attacker, g_Hitsounds[g_cl_hitsound[attacker]].path);
 	return Plugin_Handled;
 }
 
-
-// ** ** ** ** ** **
-// menu & callback
-
-// create menu to client with all hitsounds and his current one
-public void initialize_hit_sound_menu(int client) {
-	Handle menu = INVALID_HANDLE;
-	char info[4], item[64];
-	menu = CreateMenu(callback_hitsound_menu, MenuAction_Start|MenuAction_Select|MenuAction_End|MenuAction_Cancel);
-	SetMenuTitle(menu, "Escolhe o teu HitSound:");
-	for (int i = 0; i < TOTAL_HITSOUNDS; i++) {
-		Format(item, sizeof(item), "%s %s", g_sounds_name[i], i == g_cl_hitsound[client] ? "[X]" : " ");
-		IntToString(i, info, sizeof(info));
-		AddMenuItem(menu, info, item);
+public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
+{
+	int attacker = GetClientOfUserId(GetEventInt(event, "attacker"));
+    
+	if (IsValidClient(attacker) && g_cl_killsound[attacker])
+	{
+		PlaySound(attacker, g_Killsounds[g_cl_killsound[attacker]].path);
+		PlaySoundForSpecs(attacker, g_Killsounds[g_cl_killsound[attacker]].path);
 	}
-	
-	DisplayMenu(menu, client, MENU_TIME_FOREVER);
+
+	return Plugin_Handled;
 }
 
-public int callback_hitsound_menu(Menu menu, MenuAction action, int param1, int param2) {
+public void OnClientDisconnect(int client)
+{
+	if(AreClientCookiesCached(client))
+	{
+		char hs_option[4], ks_option[4];
+		IntToString(g_cl_hitsound[client], hs_option, sizeof(hs_option));
+		SetClientCookie(client, cookie_hitsound, hs_option);
+
+		IntToString(g_cl_killsound[client], ks_option, sizeof(ks_option));
+		SetClientCookie(client, cookie_hitsound, ks_option);
+	}
+}
+
+
+public Action Cmd_HitSound(int client, int args)
+{
+	if (!IsValidClient(client)) {
+		return Plugin_Handled;
+	}
+	
+	Menu_Hitsound(client);
+	return Plugin_Handled;
+}
+
+void Menu_Hitsound(int client)
+{
+	char info[8], item[64];
+	Menu menu = CreateMenu(Menu_Hitsound_Handler);
+	menu.SetTitle("Hitsound Menu");
+
+	IntToString(HIT, info, sizeof(info));
+	Format(item, sizeof(item), "Acertar");
+	menu.AddItem(info, item);
+
+	IntToString(KILL, info, sizeof(info));
+	Format(item, sizeof(item), "Matar");
+	menu.AddItem(info, item);
+
+	menu.Display(client, MENU_TIME_FOREVER);
+}
+
+public int Menu_Hitsound_Handler(Menu menu, MenuAction action, int client, int param2)
+{
 	switch (action) {
+		case MenuAction_End: { 
+			delete menu; 
+		}
+
 		case MenuAction_Select: {
 			char item[32];
 			menu.GetItem(param2, item, sizeof(item));
-			int option = StringToInt(item);
-			g_cl_hitsound[param1] = option;
 			
-			SetClientCookie(param1, cookie_hitsound, item); // pls work
+			int option = StringToInt(item);
+			switch(option)
+			{
+				case HIT:
+				{
+					Menu_Hitsound_Hit(client);
+				}
 
-			if (!option) {
-				CPrintToChat(param1, "%s {lightred}Desativaste{default} os HitSounds.", TAG);
-			} else {
-				CPrintToChat(param1, "%s Escolheste {green}\"%s\" {default}como HitSound.", TAG, g_sounds_name[option]);
-			}				
-		}
-		
-		case MenuAction_End: { 	
-			delete menu; 
-		}
-	}
-	
+				case KILL:
+				{
+					Menu_Hitsound_Kill(client);
+				}
+			}
+        }
+    }
+    
 	return 0;
 }
 
+void Menu_Hitsound_Kill(int client)
+{
+	char info[8], item[64];
 
-// ** ** **
-// events
+	Menu menu = CreateMenu(Menu_Hitsound_Kill_Handler);
 
-public Action event_player_hurt(Event event, const char[] name, bool dontBroadcast) {
-	int attacker = GetClientOfUserId(GetEventInt(event, "attacker"));
-	if (!is_valid_client(attacker)) {
-		return Plugin_Handled;
+	menu.SetTitle("Escolhe o teu HitSound (ao matar):");
+
+	for (int i = 0; i < g_KillsoundsSize; i++)
+	{
+		Format(item, sizeof(item), "%s %s", g_Killsounds[i].name, i == g_cl_killsound[client] ? "[X]" : " ");
+		IntToString(i, info, sizeof(info));
+		menu.AddItem(info, item, i == g_cl_killsound[client] || !CheckAdminFlag(client, g_Killsounds[i].flag) ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
 	}
-	
-	if (cv_hitsound_kill_only.BoolValue && GetEventInt(event, "health") > 0) {
-		return Plugin_Handled;
-	}
-	
-	play_sound(attacker, g_sounds[g_cl_hitsound[attacker]]);
-	play_sound_for_specs(attacker);
-	return Plugin_Handled;
+
+	menu.ExitBackButton = true;
+	menu.ExitButton = true;
+
+	menu.Display(client, MENU_TIME_FOREVER);
 }
 
+public int Menu_Hitsound_Kill_Handler(Menu menu, MenuAction action, int client, int itemNum)
+{
+	switch (action)
+	{
+		case MenuAction_Cancel:
+		{
+			if (itemNum == MenuCancel_ExitBack)
+			{
+				Menu_Hitsound(client);
+			}
+		}
 
-// ** ** ** **
-// functions
+		case MenuAction_End:
+		{ 
+			delete menu; 
+		}
 
-stock bool is_valid_client(int client) {
-    return (client >= 1 && client <= MaxClients && IsClientConnected(client) && IsClientInGame(client) && !IsClientSourceTV(client));
+		case MenuAction_Select:
+		{
+			char item[32];
+			menu.GetItem(itemNum, item, sizeof(item));
+			
+			int option = StringToInt(item);
+			g_cl_killsound[client] = option;
+
+			if (!option)	CPrintToChat(client, "%s {lightred}Desativaste{default} os hitmarkers ao matar", TAG);
+			else			CPrintToChat(client, "%s Escolheste {green}\"%s\" {default}como hitmarker (ao matar)", TAG, g_Killsounds[option].name);
+
+			Menu_Hitsound_Kill(client);
+        }
+    }
+    
+	return 0;
 }
 
-// this function will also play the sound to the spectators
-void play_sound_for_specs(int attacker) {
+void Menu_Hitsound_Hit(int client)
+{
+	char info[8], item[64];
+
+	Menu menu = CreateMenu(Menu_Hitsound_Hit_Handler);
+
+	menu.SetTitle("Escolhe o teu HitSound (ao acertar):");
+
+	for (int i = 0; i < g_HitsoundsSize; i++)
+	{
+		Format(item, sizeof(item), "%s %s", g_Hitsounds[i].name, i == g_cl_hitsound[client] ? "[X]" : " ");
+		IntToString(i, info, sizeof(info));
+		menu.AddItem(info, item, i == g_cl_hitsound[client] || !CheckAdminFlag(client, g_Hitsounds[i].flag) ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
+	}
+
+	menu.ExitBackButton = true;
+	menu.ExitButton = true;
+
+	menu.Display(client, MENU_TIME_FOREVER);
+}
+
+public int Menu_Hitsound_Hit_Handler(Menu menu, MenuAction action, int client, int itemNum)
+{
+	switch (action)
+	{
+
+		case MenuAction_Cancel:
+		{
+			if (itemNum == MenuCancel_ExitBack)
+			{
+				Menu_Hitsound(client);
+			}
+		}
+
+		case MenuAction_End:
+		{ 
+			delete menu; 
+		}
+
+		case MenuAction_Select:
+		{
+			char item[32];
+			menu.GetItem(itemNum, item, sizeof(item));
+			
+			int option = StringToInt(item);
+			g_cl_hitsound[client] = option;
+
+			if (!option)	CPrintToChat(client, "%s {lightred}Desativaste{default} os hitsounds ao acertar.", TAG);
+			else			CPrintToChat(client, "%s Escolheste {green}\"%s\" {default}como hitsounds (ao acertar)", TAG, g_Hitsounds[option].name);
+
+			Menu_Hitsound_Hit(client);
+		}
+	}
+
+	return 0;
+}
+
+void PlaySoundForSpecs(int attacker, const char[] sound)
+{
 	for (int spec = 1; spec <= MaxClients; spec++) {
-		if (!is_valid_client(spec) || !IsClientObserver(spec))
+		if (!IsValidClient(spec) || !IsClientObserver(spec))
 			continue;
 
 		int spec_mode = GetEntProp(spec, Prop_Send, "m_iObserverMode");
 		if (spec_mode == SPECMODE_FIRSTPERSON || spec_mode == SPECMODE_3RDPERSON) {
 			int target = GetEntPropEnt(spec, Prop_Send, "m_hObserverTarget");
 			if (target == attacker) {
-				ClientCommand(spec, g_sounds[g_cl_hitsound[spec]]);
+				ClientCommand(spec, "play */%s", sound);
 			}
 		}
 	}
 }
 
-void play_sound(int client, const char[] sound) {
+void PlaySound(int client, const char[] sound)
+{
 	if (strcmp("", sound) || strlen(sound) > 1) {
-		ClientCommand(client, sound);
+		ClientCommand(client, "play */%s", sound);
 	}
 }
 
+void DownloadPrecacheSounds()
+{
+	char buffer[PLATFORM_MAX_PATH];
+	char download[PLATFORM_MAX_PATH];
+	char flag[16];
+	char precache[64];
+	
+	char path[PLATFORM_MAX_PATH];
+	BuildPath(Path_SM, path, sizeof(path), "configs/hitsound/hitsound_menu.cfg");
 
-// ** ** ** **
-// cookies ( do they work? :] )
-void do_cookie_stuff() {
-	cookie_hitsound = RegClientCookie("roby_cookie_hitsound", "hitsound choice", CookieAccess_Protected);
-	for (int i = MaxClients; i > 0; --i) {
-        if(AreClientCookiesCached(i)) {
-			OnClientCookiesCached(i);
+	Handle kv = CreateKeyValues("HitSoundMenu");
+	FileToKeyValues(kv, path);
+
+	if (!KvGotoFirstSubKey(kv)) {
+		SetFailState("CFG File not found: %s", path);
+		CloseHandle(kv);
+	}
+
+	g_HitsoundsSize = 0;
+
+	do {
+
+		KvGetSectionName(kv, buffer, sizeof(buffer));
+		Format(g_Hitsounds[g_HitsoundsSize].name, 32, "%s", buffer);
+
+		KvGetString(kv, "path", buffer, sizeof(buffer));
+		Format(g_Hitsounds[g_HitsoundsSize].path, PLATFORM_MAX_PATH, "%s", buffer);
+
+		KvGetString(kv, "flag", flag, sizeof(flag));
+		Format(g_Hitsounds[g_HitsoundsSize].flag, 16, "%s", flag);
+
+		g_HitsoundsSize++;
+
+		if(StrEqual(g_Hitsounds[g_HitsoundsSize].path, ""))
+		{
+			continue;
+		}
+
+		Format(download, sizeof(download), "sound/%s", g_Hitsounds[g_HitsoundsSize].path);
+		AddFileToDownloadsTable(download);
+
+		Format(precache, sizeof(precache), "%s", g_Hitsounds[g_HitsoundsSize].path);
+		PrecacheDecal(precache, true);
+
+	} while (KvGotoNextKey(kv));
+
+	CloseHandle(kv);
+
+
+	BuildPath(Path_SM, path, sizeof(path), "configs/hitsound/killsound_menu.cfg");
+
+	kv = CreateKeyValues("KillSoundMenu");
+	FileToKeyValues(kv, path);
+
+	if (!KvGotoFirstSubKey(kv)) {
+		SetFailState("CFG File not found: %s", path);
+		CloseHandle(kv);
+	}
+
+	g_KillsoundsSize = 0;
+
+	do {
+
+		KvGetSectionName(kv, buffer, sizeof(buffer));
+		Format(g_Killsounds[g_KillsoundsSize].name, 32, "%s", buffer);
+
+		KvGetString(kv, "path", buffer, sizeof(buffer));
+		Format(g_Killsounds[g_KillsoundsSize].path, PLATFORM_MAX_PATH, "%s", buffer);
+
+		KvGetString(kv, "flag", flag, sizeof(flag));
+		Format(g_Killsounds[g_KillsoundsSize].flag, 16, "%s", flag);
+
+		g_KillsoundsSize++;
+
+		if(StrEqual(g_Killsounds[g_KillsoundsSize].path, ""))
+		{
+			continue;
+		}
+
+		Format(download, sizeof(download), "sound/%s", g_Killsounds[g_KillsoundsSize].path);
+		AddFileToDownloadsTable(download);
+
+		Format(precache, sizeof(precache), "%s", g_Killsounds[g_KillsoundsSize].path);
+		PrecacheDecal(precache, true);
+
+	} while (KvGotoNextKey(kv));
+
+	CloseHandle(kv);
+}
+
+stock bool CheckAdminFlag(int client, const char[] flags)
+{
+	if(StrEqual(flags, "")) {
+		return true;
+	}
+	
+	int iCount = 0;
+	char sflagNeed[22][8], sflagFormat[64];
+	bool bEntitled = false;
+	
+	Format(sflagFormat, sizeof(sflagFormat), flags);
+	ReplaceString(sflagFormat, sizeof(sflagFormat), " ", "");
+	iCount = ExplodeString(sflagFormat, ",", sflagNeed, sizeof(sflagNeed), sizeof(sflagNeed[]));
+	
+	for (int i = 0; i < iCount; i++)
+	{
+		if ((GetUserFlagBits(client) & ReadFlagString(sflagNeed[i]) == ReadFlagString(sflagNeed[i])) || (GetUserFlagBits(client) & ADMFLAG_ROOT))
+		{
+			bEntitled = true;
+			break;
 		}
 	}
+	
+	return bEntitled;
 }
 
-public void OnClientDisconnect(int client) {
-	char hs_option[4];
-	IntToString(g_cl_hitsound[client], hs_option, sizeof(hs_option));
-	SetClientCookie(client, cookie_hitsound, hs_option);
-}
-
-public OnClientCookiesCached(int client) {
-	char hs[4];
-	GetClientCookie(client, cookie_hitsound, hs, sizeof(hs));
-	g_cl_hitsound[client] = (hs[0] == '\0') ? 1:StringToInt(hs);
-}
-
-
-// ** ** ** **
-// precache (make sure ur fastdl works lol)
-
-void precache_sounds() {
-	char str1[102], str2[128];
-	for (int i = 1; i < TOTAL_HITSOUNDS; i++) {
-		Format(str1, sizeof(str1), "%s", g_sounds[i][FindCharInString(g_sounds[i], '*', false)+2]);
-		Format(str2, sizeof(str2), "sound/%s", str1);
-		AddFileToDownloadsTable(str2);
-		PrecacheSound(str1, true);
-	}
+stock bool IsValidClient(int client)
+{
+    return (client >= 1 && client <= MaxClients && IsClientConnected(client) && IsClientInGame(client) && !IsClientSourceTV(client));
 }
