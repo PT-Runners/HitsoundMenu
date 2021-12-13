@@ -93,25 +93,36 @@ public void OnPluginEnd()
 
 public Action OnPlayerHurt(Event event, const char[] name, bool dontBroadcast)
 {
-	int attacker = GetClientOfUserId(GetEventInt(event, "attacker"));
-	if (!IsValidClient(attacker)) {
+	int attacker = GetClientOfUserId(event.GetInt("attacker"));
+
+	int victim = GetClientOfUserId(event.GetInt("userid"));
+
+	if (!IsValidClient(attacker) || !IsValidClient(victim))
+	{
 		return Plugin_Handled;
 	}
-	
-	if (GetEventInt(event, "health") > 0) {
-		return Plugin_Handled;
+
+	if(g_cl_hitsound[attacker])
+	{
+		PlaySound(attacker, g_Hitsounds[g_cl_hitsound[attacker]].path);
+		PlaySoundForSpecs(attacker, g_Hitsounds[g_cl_hitsound[attacker]].path);
 	}
 	
-	PlaySound(attacker, g_Hitsounds[g_cl_hitsound[attacker]].path);
-	PlaySoundForSpecs(attacker, g_Hitsounds[g_cl_hitsound[attacker]].path);
 	return Plugin_Handled;
 }
 
 public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 {
-	int attacker = GetClientOfUserId(GetEventInt(event, "attacker"));
+	int attacker = GetClientOfUserId(event.GetInt("attacker"));
+
+	int victim = GetClientOfUserId(event.GetInt("userid"));
+
+	if (!IsValidClient(attacker) || !IsValidClient(victim))
+	{
+		return Plugin_Handled;
+	}
     
-	if (IsValidClient(attacker) && g_cl_killsound[attacker])
+	if (g_cl_killsound[attacker])
 	{
 		PlaySound(attacker, g_Killsounds[g_cl_killsound[attacker]].path);
 		PlaySoundForSpecs(attacker, g_Killsounds[g_cl_killsound[attacker]].path);
@@ -129,7 +140,7 @@ public void OnClientDisconnect(int client)
 		SetClientCookie(client, cookie_hitsound, hs_option);
 
 		IntToString(g_cl_killsound[client], ks_option, sizeof(ks_option));
-		SetClientCookie(client, cookie_hitsound, ks_option);
+		SetClientCookie(client, cookie_killsound, ks_option);
 	}
 }
 
@@ -304,7 +315,7 @@ public int Menu_Hitsound_Hit_Handler(Menu menu, MenuAction action, int client, i
 	return 0;
 }
 
-void PlaySoundForSpecs(int attacker, const char[] sound)
+void PlaySoundForSpecs(int attacker, char[] sound)
 {
 	for (int spec = 1; spec <= MaxClients; spec++) {
 		if (!IsValidClient(spec) || !IsClientObserver(spec))
@@ -320,7 +331,7 @@ void PlaySoundForSpecs(int attacker, const char[] sound)
 	}
 }
 
-void PlaySound(int client, const char[] sound)
+void PlaySound(int client, char[] sound)
 {
 	if (strcmp("", sound) || strlen(sound) > 1) {
 		ClientCommand(client, "play */%s", sound);
@@ -358,10 +369,9 @@ void DownloadPrecacheSounds()
 		KvGetString(kv, "flag", flag, sizeof(flag));
 		Format(g_Hitsounds[g_HitsoundsSize].flag, 16, "%s", flag);
 
-		g_HitsoundsSize++;
-
 		if(StrEqual(g_Hitsounds[g_HitsoundsSize].path, ""))
 		{
+			g_HitsoundsSize++;
 			continue;
 		}
 
@@ -370,6 +380,8 @@ void DownloadPrecacheSounds()
 
 		Format(precache, sizeof(precache), "%s", g_Hitsounds[g_HitsoundsSize].path);
 		PrecacheDecal(precache, true);
+
+		g_HitsoundsSize++;
 
 	} while (KvGotoNextKey(kv));
 
@@ -399,10 +411,9 @@ void DownloadPrecacheSounds()
 		KvGetString(kv, "flag", flag, sizeof(flag));
 		Format(g_Killsounds[g_KillsoundsSize].flag, 16, "%s", flag);
 
-		g_KillsoundsSize++;
-
 		if(StrEqual(g_Killsounds[g_KillsoundsSize].path, ""))
 		{
+			g_KillsoundsSize++;
 			continue;
 		}
 
@@ -411,6 +422,8 @@ void DownloadPrecacheSounds()
 
 		Format(precache, sizeof(precache), "%s", g_Killsounds[g_KillsoundsSize].path);
 		PrecacheDecal(precache, true);
+
+		g_KillsoundsSize++;
 
 	} while (KvGotoNextKey(kv));
 
