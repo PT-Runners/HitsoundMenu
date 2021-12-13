@@ -97,7 +97,7 @@ public Action OnPlayerHurt(Event event, const char[] name, bool dontBroadcast)
 
 	int victim = GetClientOfUserId(event.GetInt("userid"));
 
-	if (!IsValidClient(attacker) || !IsValidClient(victim))
+	if (!IsValidClient(attacker) || !IsValidClient(victim) || victim == attacker)
 	{
 		return Plugin_Handled;
 	}
@@ -117,7 +117,7 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 
 	int victim = GetClientOfUserId(event.GetInt("userid"));
 
-	if (!IsValidClient(attacker) || !IsValidClient(victim))
+	if (!IsValidClient(attacker) || !IsValidClient(victim) || victim == attacker)
 	{
 		return Plugin_Handled;
 	}
