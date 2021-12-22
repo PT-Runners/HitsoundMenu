@@ -47,6 +47,9 @@ public void OnPluginStart()
 	cookie_killsound = RegClientCookie("roby_cookie_killsound", "killsound choice", CookieAccess_Protected);
 
 	RegConsoleCmd("sm_hitsound", Cmd_HitSound);
+	RegConsoleCmd("sm_hitsounds", Cmd_HitSound);
+	RegConsoleCmd("sm_killsound", Cmd_HitSound);
+	RegConsoleCmd("sm_killsounds", Cmd_HitSound);
 	
 	HookEvent("player_hurt", OnPlayerHurt);
 	HookEvent("player_death", OnPlayerDeath);
