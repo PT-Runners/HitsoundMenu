@@ -49,7 +49,6 @@ public void OnPluginStart()
 	RegConsoleCmd("sm_hitsound", Cmd_HitSound);
 	
 	HookEvent("player_hurt", OnPlayerHurt);
-	HookEvent("player_death", OnPlayerDeath);
 }
 
 public void OnMapStart()
@@ -102,32 +101,25 @@ public Action OnPlayerHurt(Event event, const char[] name, bool dontBroadcast)
 		return Plugin_Handled;
 	}
 
-	if(g_cl_hitsound[attacker])
+	int health = GetClientHealth(victim);
+
+	if(health < 1)
 	{
-		PlaySound(attacker, g_Hitsounds[g_cl_hitsound[attacker]].path);
-		PlaySoundForSpecs(attacker, g_Hitsounds[g_cl_hitsound[attacker]].path);
+		if (g_cl_killsound[attacker])
+		{
+			PlaySound(attacker, g_Killsounds[g_cl_killsound[attacker]].path);
+			PlaySoundForSpecs(attacker, g_Killsounds[g_cl_killsound[attacker]].path);
+		}
+	}
+	else
+	{
+		if(g_cl_hitsound[attacker])
+		{
+			PlaySound(attacker, g_Hitsounds[g_cl_hitsound[attacker]].path);
+			PlaySoundForSpecs(attacker, g_Hitsounds[g_cl_hitsound[attacker]].path);
+		}
 	}
 	
-	return Plugin_Handled;
-}
-
-public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
-{
-	int attacker = GetClientOfUserId(event.GetInt("attacker"));
-
-	int victim = GetClientOfUserId(event.GetInt("userid"));
-
-	if (!IsValidClient(attacker) || !IsValidClient(victim) || victim == attacker)
-	{
-		return Plugin_Handled;
-	}
-    
-	if (g_cl_killsound[attacker])
-	{
-		PlaySound(attacker, g_Killsounds[g_cl_killsound[attacker]].path);
-		PlaySoundForSpecs(attacker, g_Killsounds[g_cl_killsound[attacker]].path);
-	}
-
 	return Plugin_Handled;
 }
 
