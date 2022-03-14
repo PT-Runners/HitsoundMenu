@@ -243,8 +243,15 @@ public int Menu_Hitsound_Kill_Handler(Menu menu, MenuAction action, int client, 
 			int option = StringToInt(item);
 			g_cl_killsound[client] = option;
 
-			if (!option)	CPrintToChat(client, "%s {lightred}Desativaste{default} os hitmarkers ao matar", TAG);
-			else			CPrintToChat(client, "%s Escolheste {green}\"%s\" {default}como hitmarker (ao matar)", TAG, g_Killsounds[option].name);
+			if (!option)
+			{
+				CPrintToChat(client, "%s {lightred}Desativaste{default} os hitsound ao matar", TAG);
+			}
+			else
+			{
+				CPrintToChat(client, "%s Escolheste {green}\"%s\" {default}como hitsound (ao matar)", TAG, g_Killsounds[option].name);
+				PlaySound(client, g_Killsounds[g_cl_killsound[client]].path);
+			}
 
 			Menu_Hitsound_Kill(client);
         }
@@ -300,8 +307,16 @@ public int Menu_Hitsound_Hit_Handler(Menu menu, MenuAction action, int client, i
 			int option = StringToInt(item);
 			g_cl_hitsound[client] = option;
 
-			if (!option)	CPrintToChat(client, "%s {lightred}Desativaste{default} os hitsounds ao acertar.", TAG);
-			else			CPrintToChat(client, "%s Escolheste {green}\"%s\" {default}como hitsounds (ao acertar)", TAG, g_Hitsounds[option].name);
+			if (!option)
+			{
+				CPrintToChat(client, "%s {lightred}Desativaste{default} os hitsound ao acertar.", TAG);
+			}
+			else
+			{
+				CPrintToChat(client, "%s Escolheste {green}\"%s\" {default}como hitsound (ao acertar)", TAG, g_Hitsounds[option].name);
+				PlaySound(client, g_Hitsounds[g_cl_hitsound[client]].path);
+			}
+
 
 			Menu_Hitsound_Hit(client);
 		}
